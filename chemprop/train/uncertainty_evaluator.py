@@ -1,22 +1,47 @@
+from argparse import Namespace
 from scipy import stats
 import json
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.optimize import minimize
+from typing import Any, Callable, Dict, List
 
 
 class EvaluationMethod:
+    """
+    An EvaluationMethod takes in the uncertainty estimates and
+    true errors for a set of predictions. From these it is capable
+    of producing a numeric evaluation and a visualization.
+    """
     def __init__(self):
         self.name = None
 
-    def evaluate(self, data):
+    def evaluate(self, data: Dict[str, List[Dict[str, float]]]) -> Any:
+        """
+        Evaluates the provided uncertainty estimates.
+
+        :param data: A dict storing lists of sorted predictions and errors.
+        :return: Some representation of the evaluation.
+        """
         pass
 
-    def _visualize(self, task, evaluation):
+    def _visualize(self, task: str, evaluation: Any):
+        """
+        A helper method which visualizes data given some evaluation.
+
+        :param task: The name of the task being visualized.
+        :param evaluation: Some representation of the evaluation.
+        """
         pass
 
-    def visualize(self, task, data):
+    def visualize(self, task: str, data: Dict[str, List[Dict[str, float]]]):
+        """
+        A wrapper method which evaluates provided data before visualizing it.
+
+        :param task: The name of the task being visualized.
+        :param data: A dict storing lists of sorted predictions and errors.
+        """
         evaluation = self.evaluate(data)
 
         sns.set()
@@ -24,113 +49,16 @@ class EvaluationMethod:
         self._visualize(task, evaluation)
 
 
-class Cutoffs(EvaluationMethod):
-    def __init__(self):
-        self.name = 'cutoff'
-
-    def evaluate(self, data):
-        cutoff = []
-        rmse = []
-        ideal_rmse = []
-
-        square_error = [set_['error']**2 for set_ in data[
-            'sets_by_uncertainty']]
-        ideal_square_error = [set_['error']**2 for set_ in data[
-            'sets_by_error']]
-
-        total_square_error = np.sum(square_error)
-        ideal_total_square_error = np.sum(ideal_square_error)
-
-        for i in range(len(square_error)):
-            cutoff.append(data['sets_by_uncertainty'][i]['uncertainty'])
-
-            rmse.append(np.sqrt(total_square_error/len(square_error[i:])))
-            total_square_error -= square_error[i]
-
-            ideal_rmse.append(np.sqrt(
-                ideal_total_square_error / len(square_error[i:])))
-
-            ideal_total_square_error -= ideal_square_error[i]
-
-        return {'cutoff': cutoff, 'rmse': rmse, 'ideal_rmse': ideal_rmse}
-
-    def _visualize(self, task, evaluation):
-        percentiles = np.linspace(0, 100, len(evaluation['rmse']))
-
-        plt.plot(percentiles, evaluation['rmse'])
-        plt.plot(percentiles, evaluation['ideal_rmse'])
-
-        plt.xlabel('Percent of Data Discarded')
-        plt.ylabel('RMSE')
-        plt.legend(['uncertainty Discard', 'Ideal Discard'])
-        plt.title(task)
-
-        plt.show()
-
-
-class Scatter(EvaluationMethod):
-    def __init__(self):
-        self.name = 'scatter'
-        self.x_axis_label = 'uncertainty'
-        self.y_axis_label = 'Error'
-
-    def evaluate(self, data):
-        uncertainty = [self._x_filter(set_['uncertainty'])
-                       for set_ in data['sets_by_uncertainty']]
-        error = [self._y_filter(set_['error'])
-                 for set_ in data['sets_by_uncertainty']]
-
-        slope, intercept, _, _, _ = stats.linregress(uncertainty, error)
-
-        return {'uncertainty': uncertainty,
-                'error': error,
-                'best_fit_y': slope * np.array(uncertainty) + intercept}
-
-    def _x_filter(self, x):
-        return x
-
-    def _y_filter(self, y):
-        return y
-
-    def _visualize(self, task, evaluation):
-        plt.scatter(evaluation['uncertainty'], evaluation['error'], s=0.3)
-        plt.plot(evaluation['uncertainty'], evaluation['best_fit_y'])
-
-        plt.xlabel(self.x_axis_label)
-        plt.ylabel(self.y_axis_label)
-        plt.title(task)
-
-        plt.show()
-
-
-class AbsScatter(Scatter):
-    def __init__(self):
-        self.name = 'abs_scatter'
-        self.x_axis_label = 'uncertainty'
-        self.y_axis_label = 'Absolute Value of Error'
-
-    def _y_filter(self, y):
-        return np.abs(y)
-
-
-class LogScatter(Scatter):
-    def __init__(self):
-        self.name = 'log_scatter'
-        self.x_axis_label = 'Log uncertainty'
-        self.y_axis_label = 'Log Absolute Value of Error'
-
-    def _x_filter(self, x):
-        return np.log(x)
-
-    def _y_filter(self, y):
-        return np.log(np.abs(y))
-
-
 class Spearman(EvaluationMethod):
+    """
+    Computes Spearman's correlation coefficient between the provided
+    uncertainty estimates and true errors.
+    """
     def __init__(self):
         self.name = 'spearman'
 
-    def evaluate(self, data):
+    def evaluate(self, data: Dict[str, List[Dict[str, float]]]) \
+            -> Dict[str, float]:
         uncertainty = [set_['uncertainty']
                        for set_ in data['sets_by_uncertainty']]
         error = [set_['error']
@@ -140,16 +68,22 @@ class Spearman(EvaluationMethod):
 
         return {'rho': rho, 'p': p}
 
-    def _visualize(self, task, evaluation):
+    def _visualize(self, task: str, evaluation: Dict[str, float]):
         print(task, '-', 'Spearman Rho:', evaluation['rho'])
         print(task, '-', 'Spearman p-value:', evaluation['p'])
 
 
 class LogLikelihood(EvaluationMethod):
+    """
+    Computes the log likelihood, average log likelihood, optimal log
+    likelihood, and average optimal log likelihood, to produce the
+    observed true errors given the provided uncertainty estimates.
+    """
     def __init__(self):
         self.name = 'log_likelihood'
 
-    def evaluate(self, data):
+    def evaluate(self, data: Dict[str, List[Dict[str, float]]]) \
+            -> Dict[str, float]:
         log_likelihood = 0
         optimal_log_likelihood = 0
         for set_ in data['sets_by_uncertainty']:
@@ -170,18 +104,29 @@ class LogLikelihood(EvaluationMethod):
                 'average_optimal_log_likelihood': optimal_log_likelihood / len(
                     data['sets_by_uncertainty'])}
 
-    def _visualize(self, task, evaluation):
+    def _visualize(self, task: str, evaluation: Dict[str, float]):
         print(task,
               '-',
               'Sum of Log Likelihoods:',
               evaluation['log_likelihood'])
 
 
-class CalibrationAUC(EvaluationMethod):
+class MiscalibrationArea(EvaluationMethod):
+    """
+    Computes the miscalibration area given the provided uncertainty estimates
+    and true errors.
+
+    The miscalibration area compares the observed fraction of errors falling
+    within 'z' standard deviations of the mean to what is expected for a
+    Gaussian random variable with variance equal to the uncertainty prediction.
+
+    The miscalibration area is computed as the area between the true curve of
+    observed versus expected fractions and the parity line.
+    """
     def __init__(self):
         self.name = 'calibration_auc'
 
-    def evaluate(self, data):
+    def evaluate(self, data: Dict[str, List[Dict[str, float]]]) -> Any:
         standard_devs = [np.abs(set_['error'])/set_[
             'uncertainty'] for set_ in data['sets_by_uncertainty']]
         probabilities = [2 * (stats.norm.cdf(
@@ -214,7 +159,7 @@ class CalibrationAUC(EvaluationMethod):
                 'thresholds': thresholds,
                 'miscalibration_area': miscalibration_area}
 
-    def _visualize(self, task, evaluation):
+    def _visualize(self, task: str, evaluation: Any):
         print(task,
               '-',
               'Miscalibration Area',
@@ -232,64 +177,36 @@ class CalibrationAUC(EvaluationMethod):
         plt.show()
 
 
-class Boxplot(EvaluationMethod):
-    def __init__(self):
-        self.name = 'boxplot'
-
-    def evaluate(self, data):
-        errors_by_uncertainty = [[] for _ in range(10)]
-
-        min_uncertainty = data['sets_by_uncertainty'][-1]['uncertainty']
-        max_uncertainty = data['sets_by_uncertainty'][0]['uncertainty']
-        uncertainty_range = max_uncertainty - min_uncertainty
-
-        for pair in data['sets_by_uncertainty']:
-            errors_by_uncertainty[min(int((
-                pair['uncertainty'] - min_uncertainty)//(
-                    uncertainty_range / 10)), 9)].append(pair['error'])
-
-        return {'errors_by_uncertainty': errors_by_uncertainty,
-                'min_uncertainty': min_uncertainty,
-                'max_uncertainty': max_uncertainty,
-                'data': data}
-
-    def _visualize(self, task, evaluation):
-        errors_by_uncertainty = evaluation['errors_by_uncertainty']
-
-        offset = evaluation['max_uncertainty'] - evaluation['min_uncertainty']
-        scaled_offset = offset / (len(errors_by_uncertainty) * 2)
-        x_vals = list(np.linspace(evaluation['min_uncertainty'],
-                                  evaluation['max_uncertainty'],
-                                  num=len(errors_by_uncertainty),
-                                  endpoint=False) + (scaled_offset))
-
-        plt.boxplot(errors_by_uncertainty, positions=x_vals, widths=(0.02))
-
-        names = (
-            f'{len(errors_by_uncertainty[i])} points' for i in range(10))
-        plt.xticks(x_vals, names)
-        plt.xlim((evaluation['min_uncertainty'],
-                  evaluation['max_uncertainty']))
-        Scatter().visualize(task, evaluation['data'])
-
-
 class UncertaintyEvaluator:
-    methods = [Cutoffs(),
-               AbsScatter(),
-               LogScatter(),
-               Spearman(),
+    """
+    An UncertaintyEvaluator stores the values produced by a
+    UQ method experiment and uses some number of EvaluationMethods
+    to analyze the results.
+    """
+    methods = [Spearman(),
                LogLikelihood(),
-               Boxplot(),
-               CalibrationAUC()]
+               MiscalibrationArea()]
 
     @staticmethod
-    def save(val_predictions,
-             val_targets,
-             val_uncertainty,
-             test_predictions,
-             test_targets,
-             test_uncertainty,
-             args):
+    def save(val_predictions: np.ndarray,
+             val_targets: np.ndarray,
+             val_uncertainty: np.ndarray,
+             test_predictions: np.ndarray,
+             test_targets: np.ndarray,
+             test_uncertainty: np.ndarray,
+             args: Namespace):
+        """
+        Sorts predictions made by an uncertainty estimator and saves the
+        resulting logs to a file specified in args.
+
+        :param val_predictions: The predicted labels for the validation set.
+        :param val_targets: The targets (true labels) for the validation set.
+        :param val_uncertainty: The uncertainties for the validation set.
+        :param test_predictions: The predicted labels for the test set.
+        :param test_targets: The targets (true labels) for the test set.
+        :param test_uncertainty: The uncertainties for the test set.
+        :param args: The command line arguments.
+        """
         f = open(args.save_uncertainty, 'w+')
 
         val_data = UncertaintyEvaluator._log(val_predictions,
@@ -305,7 +222,21 @@ class UncertaintyEvaluator:
         f.close()
 
     @staticmethod
-    def _log(predictions, targets, uncertainty, args):
+    def _log(predictions: np.ndarray,
+             targets: np.ndarray,
+             uncertainty: np.ndarray,
+             args: Namespace) -> Dict[str, Dict[str, List[Dict[str, float]]]]:
+        """
+        Takes a collection of predictions and returns a sorted log.
+
+        :param predictions: The predicted labels for the collection.
+        :param targets: The targets (true labels) for the collection.
+        :param uncertainty: The uncertainties for the collection.
+        :param args: The command line arguments.
+
+        :return: The uncertainty estimator's predictions sorted by
+                 uncertainty and true error.
+        """
         log = {}
 
         # Loop through all subtasks.
@@ -341,7 +272,13 @@ class UncertaintyEvaluator:
         return log
 
     @staticmethod
-    def visualize(file_path, methods):
+    def visualize(file_path: str, methods: List[str]):
+        """
+        Visualizes stored predictions of an uncertainty estimator.
+
+        :param file_path: The file which stores the prediction log.
+        :param methods: The methods to use for evaluation and visualization.
+        """
         f = open(file_path)
         log = json.load(f)['test']
 
@@ -353,7 +290,14 @@ class UncertaintyEvaluator:
         f.close()
 
     @staticmethod
-    def evaluate(file_path, methods):
+    def evaluate(file_path: str, methods: List[str]) -> Dict[str, Any]:
+        """
+        Evaluates stored predictions of an uncertainty estimator.
+
+        :param file_path: The file which stores the prediction log.
+        :param methods: The methods to use for evaluation.
+        :returns: A dictionary of evaluation results.
+        """
         f = open(file_path)
         log = json.load(f)['test']
 
@@ -370,8 +314,43 @@ class UncertaintyEvaluator:
         return all_evaluations
 
     @staticmethod
-    def calibrate(lambdas, beta_init, file_path):
-        def objective_function(beta, uncertainty, errors, lambdas):
+    def calibrate(lambdas: List[Callable],
+                  beta_init: List[float],
+                  file_path: str):
+        """
+        Given the stored predictions of an uncertainty estimator and fixed
+        transformations, performs a calibration by selecting an optimal
+        weighting of the transformations to minimize the NLL of producing
+        the observed errors.
+
+        For example, to perform a linear calibration, two lambdas might be
+        passed:
+
+        [lambda x: x, lambda x: 1]
+
+        With initial weights of [1, 0] (the identity function).
+
+        :param lambdas: A list of fixed transformations to apply to the
+                        uncalibrated uncertainty estimates.
+        :param beta_init: A list that defines the initial weighting of the
+                          transformations, before optimization.
+        :param file_path: The file which stores the prediction log.
+        """
+        def objective_function(beta: List[float],
+                               uncertainty: List[float],
+                               errors: List[float],
+                               lambdas: List[Callable]) -> float:
+            """
+            Defines the cost imposed (NLL) by a particular calibration.
+
+            :param beta: The transformation weights used in calibration.
+            :param uncertainty: A list of uncalibrated uncertainty estimates.
+            :param errors: The list of true prediction erros.
+            :param lambdas: The list of transformations used in calibration.
+
+            :return: The NLL of producing the observed errors given the
+                     calibrated uncertainties.
+            """
             # Construct prediction through lambdas and betas.
             pred_vars = np.zeros(len(uncertainty))
 
@@ -382,7 +361,18 @@ class UncertaintyEvaluator:
 
             return(np.sum(costs))
 
-        def calibrate_sets(sets, sigmas, lambdas):
+        def calibrate_sets(sets: List[Dict[str, float]],
+                           sigmas: List[float],
+                           lambdas: List[Callable]) -> List[Dict[str, float]]:
+            """
+            Calibrates a collection of uncertainty estimates.
+
+            :param sets: An UncertaintyEvaluator log.
+            :param sigmas: Optimized transformation weights (betas).
+            :param lambdas: The list of transformations used in calibration.
+            :return: The UncertaintyEvaluator log with calibrated
+                     uncertainties.
+            """
             calibrated_sets = []
             for set_ in sets:
                 calibrated_set = set_.copy()

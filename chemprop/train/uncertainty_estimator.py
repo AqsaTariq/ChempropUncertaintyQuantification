@@ -31,6 +31,8 @@ class UncertaintyEstimator:
         :param train_data: The data a model was trained on.
         :param val_data: The validation/supplementary data for a model.
         :param test_data: The data to test the model with.
+        :param scaler: A scaler the model uses to transform input data.
+        :param args: The command line arguments.
         """
         self.train_data = train_data
         self.val_data = val_data

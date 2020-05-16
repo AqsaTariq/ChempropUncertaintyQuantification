@@ -9,7 +9,6 @@ from pprint import pformat
 from random import sample
 from typing import List, Tuple, Union
 
-import forestci as fci
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor

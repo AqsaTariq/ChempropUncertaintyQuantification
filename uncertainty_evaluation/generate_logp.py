@@ -4,6 +4,7 @@ import os
 import sys
 
 from rdkit import Chem
+from rdkit.Chem import Crippen
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     full_molecule_list = list(full_molecule_set)
     logp_list = []
     for molecule in full_molecule_list:
-        logp_list.append(Chem.Crippen.MolLogP(Chem.MolFromSmiles(molecule)))
+        logp_list.append(Crippen.MolLogP(Chem.MolFromSmiles(molecule)))
 
     with open('data/logp.csv', 'w+') as logp_csv:
         csv_writer = csv.writer(logp_csv, delimiter=',')

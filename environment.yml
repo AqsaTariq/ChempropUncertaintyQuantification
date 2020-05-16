@@ -1,7 +1,8 @@
-name: chemprop
+name: chemprop_uncertainty
 
 channels:
   - conda-forge
+  - plotly
   - pytorch
   - rdkit
 
@@ -9,9 +10,13 @@ dependencies:
   - flask
   - GPy
   - hyperopt
+  - jupyter
+  - matplotlib
   - numpy
+  - plotly
   - pytorch
   - rdkit
+  - seaborn
   - scikit-learn
   - scipy
   - tensorboardX
